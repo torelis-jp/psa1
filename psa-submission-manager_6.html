@@ -1,0 +1,1455 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PSA提出カード管理</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  /* ==== 赤・白・黒 / 角ばった業務ツール ==== */
+  :root{
+    --red:#d1181f; --red-d:#9e0f14; --red-t:#fbe9e9;
+    --black:#141414; --ink:#161616; --sub:#6d6d6d;
+    --bg:#e8e8e8; --paper:#ffffff;
+    --line:#141414; --line-2:#cccccc; --line-3:#e2e2e2;
+    --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,"Courier New",monospace;
+    --num:"Helvetica Neue",Arial,"Yu Gothic UI","Hiragino Sans","Meiryo",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;
+    background:var(--bg);color:var(--ink);font-size:15px;line-height:1.55;
+    -webkit-text-size-adjust:100%;
+  }
+  a{color:inherit}
+  ::selection{background:var(--red);color:#fff}
+  /* ==== topbar（header+tabs+banner を一体でsticky） ==== */
+  .topbar{position:sticky;top:0;z-index:40}
+  header{background:var(--black);color:#fff;border-bottom:3px solid var(--red)}
+  .head-in{max-width:1200px;margin:0 auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:13px 18px}
+  .logo{
+    width:40px;height:40px;flex:none;background:var(--red);
+    display:grid;place-items:center;font-weight:900;color:#fff;font-size:14px;
+    letter-spacing:1px;font-family:var(--mono);
+  }
+  header h1{font-size:18px;margin:0;font-weight:800;letter-spacing:.06em}
+  header .sub{font-size:11px;color:#9a9a9a;margin-top:2px;letter-spacing:.04em}
+  .head-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .save-pill{font-size:10.5px;color:#9a9a9a;display:flex;align-items:center;gap:6px;letter-spacing:.06em;text-transform:uppercase}
+  .dot{width:8px;height:8px;background:var(--red)}
+  .sync-badge{font-size:11px;font-weight:800;letter-spacing:.03em;padding:4px 10px;border:1.5px solid #555;color:#cfcfcf;white-space:nowrap}
+  .user-badge{font-size:11px;font-weight:700;letter-spacing:.03em;padding:4px 10px;border:1.5px solid var(--gold,#c8a24a);border-color:#c9a24a;color:#f0d488;white-space:nowrap}
+  .user-badge b{color:#fff;margin-left:4px;font-family:var(--num);font-weight:800}
+  /* ログイン画面 */
+  #loginScreen{position:fixed;inset:0;z-index:200;background:#111;display:none;align-items:flex-start;justify-content:center;padding:14vh 18px 40px;overflow:auto}
+  #loginScreen.show{display:flex}
+  body.pre-login .topbar,body.pre-login main{display:none}
+  .login-box{background:#fff;border:2px solid var(--black);border-top:6px solid var(--red);width:100%;max-width:380px;padding:28px 26px 26px;text-align:center}
+  .login-logo{width:52px;height:52px;background:var(--red);color:#fff;font-weight:900;font-family:var(--mono);font-size:16px;display:grid;place-items:center;margin:0 auto 16px;letter-spacing:1px}
+  .login-title{font-size:19px;font-weight:900;letter-spacing:.04em}
+  .login-sub{font-size:12.5px;color:var(--sub);margin-top:6px;margin-bottom:18px}
+  .login-input{font-size:17px;font-weight:700;text-align:center;padding:13px 12px;letter-spacing:.03em}
+  .login-btn{width:100%;justify-content:center;margin-top:12px;padding:13px;font-size:15px}
+  .login-msg{margin-top:12px;font-size:12.5px;font-weight:700;min-height:18px}
+  .login-msg.err{color:var(--red)}
+  .login-msg.ok{color:#137a4b}
+  .login-adv{margin-top:18px;text-align:left;border-top:1px solid var(--line-3);padding-top:12px}
+  .login-adv summary{font-size:12px;color:var(--sub);cursor:pointer;font-weight:700}
+  .login-note{font-size:11px;color:var(--sub);line-height:1.6;margin-top:8px}
+  .sync-badge.ok{border-color:#2f9e5f;color:#7ee0a5}
+  .sync-badge.busy{border-color:var(--gold,#c8a24a);border-color:#c9a24a;color:#f0d488}
+  .sync-badge.err{border-color:var(--red);color:#ff9a9e;background:rgba(209,24,31,.12)}
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;z-index:80;align-items:flex-start;justify-content:center;padding:60px 16px}
+  .modal-bg.show{display:flex}
+  .modal{background:#fff;border:2px solid var(--black);width:100%;max-width:540px;box-shadow:0 12px 40px rgba(0,0,0,.4)}
+  .modal-h{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;background:var(--black);color:#fff;font-size:15px;letter-spacing:.03em}
+  .modal-x{background:none;border:none;color:#fff;font-size:17px;cursor:pointer;font-weight:800;padding:2px 8px}
+  .modal-x:hover{color:var(--red)}
+  .modal-b{padding:18px 16px}
+  .chk{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13.5px;font-weight:700;cursor:pointer}
+  .chk input{width:auto}
+  .modal-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+  .sync-msg{margin-top:12px;font-size:12.5px;font-weight:700;min-height:18px}
+  .sync-msg.ok{color:var(--green,#1c7a52);color:#137a4b}
+  .sync-msg.err{color:var(--red)}
+  .sync-note{margin-top:14px;font-size:11.5px;color:var(--sub);line-height:1.6;border-top:1px solid var(--line-3);padding-top:12px}
+  .viewer-banner{background:#000;color:#fff;border-left:6px solid var(--red);padding:12px 16px;margin-bottom:14px}
+  .vb-user{font-size:14px;font-weight:800;letter-spacing:.03em}
+  .vb-nums{display:flex;flex-wrap:wrap;gap:6px 20px;margin-top:8px;font-size:13px;color:#cfcfcf}
+  .vb-nums b{color:#fff;font-family:var(--num);font-weight:900;margin-left:3px}
+  /* ==== tabs ==== */
+  .tabs{background:#1f1f1f;border-bottom:1px solid #000}
+  .tabs-in{max-width:1200px;margin:0 auto;display:flex;gap:0;padding:0 10px;overflow-x:auto}
+  .tab{
+    background:none;border:none;border-right:1px solid #333;color:#b6b6b6;font-family:inherit;font-size:13px;font-weight:700;
+    padding:11px 18px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:8px;letter-spacing:.03em;
+    border-bottom:3px solid transparent;transition:.1s;
+  }
+  .tab:hover{color:#fff;background:#2a2a2a}
+  .tab.active{color:#fff;background:var(--red);border-bottom-color:#fff}
+  .tab .cnt{font-size:11px;background:rgba(255,255,255,.16);padding:1px 7px;font-weight:800;font-family:var(--mono);min-width:20px;text-align:center}
+  .tab.active .cnt{background:#fff;color:var(--red)}
+  /* ==== banner（全提出の合計・常時表示） ==== */
+  .banner{background:#000;color:#fff;border-bottom:2px solid var(--red)}
+  .banner-in{max-width:1200px;margin:0 auto;display:flex;gap:0;padding:0 18px;overflow-x:auto}
+  .b-item{display:flex;flex-direction:column;justify-content:center;padding:9px 20px 9px 0;margin-right:20px;border-right:1px solid #2b2b2b;min-width:130px}
+  .b-item:last-child{border-right:none;margin-right:0}
+  .b-k{font-size:10px;color:#9a9a9a;font-weight:700;letter-spacing:.1em;text-transform:uppercase;display:flex;align-items:center;gap:6px}
+  .b-k::before{content:"";width:9px;height:9px;background:var(--red);flex:none}
+  .b-v{font-size:24px;font-weight:900;font-family:var(--num);font-variant-numeric:tabular-nums;letter-spacing:.01em;margin-top:3px}
+  main{max-width:1200px;margin:0 auto;padding:20px 16px 80px}
+  .view{display:none}
+  .view.active{display:block}
+  /* ==== panels ==== */
+  .panel{background:var(--paper);border:1.5px solid var(--black);margin-bottom:18px}
+  .panel-h{display:flex;align-items:center;gap:11px;padding:12px 15px;border-bottom:1.5px solid var(--black);background:#fafafa}
+  .panel-h .num{width:24px;height:24px;background:var(--red);color:#fff;font-weight:900;font-size:13px;display:grid;place-items:center;flex:none;font-family:var(--mono)}
+  .panel-h h2{font-size:14px;margin:0;font-weight:800;letter-spacing:.04em}
+  .panel-h .hint{font-size:11.5px;color:var(--sub);margin-left:auto;letter-spacing:.02em}
+  .panel-b{padding:16px}
+  /* ==== drop ==== */
+  .drop{border:2px dashed #9a9a9a;padding:26px 18px;text-align:center;background:#f6f6f6;cursor:pointer;transition:.12s}
+  .drop:hover,.drop.drag{border-color:var(--red);border-style:solid;background:var(--red-t)}
+  .drop .big{font-size:15px;font-weight:800;letter-spacing:.02em}
+  .drop .small{font-size:12px;color:var(--sub);margin-top:5px}
+  .drop svg{width:34px;height:34px;color:var(--black);margin-bottom:6px}
+  /* ==== buttons ==== */
+  .btn{border:1.5px solid var(--black);background:#fff;color:var(--ink);padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:.1s;font-family:inherit;white-space:nowrap;letter-spacing:.02em}
+  .btn:hover{background:var(--black);color:#fff}
+  .btn.gold{background:var(--red);border-color:var(--red);color:#fff}
+  .btn.gold:hover{background:var(--red-d);border-color:var(--red-d);color:#fff}
+  .btn.nav{background:transparent;border-color:#666;color:#fff}
+  .btn.nav:hover{background:#fff;color:var(--black);border-color:#fff}
+  .btn.ghost{background:#fff;border-color:var(--black)}
+  .btn.danger{color:var(--red);border-color:var(--red);background:#fff}
+  .btn.danger:hover{background:var(--red);color:#fff}
+  .btn.sm{padding:6px 11px;font-size:12px}
+  /* ==== fields ==== */
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field label{font-size:10.5px;color:var(--sub);font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+  input,select{font-family:inherit;font-size:13px;padding:8px 9px;border:1.5px solid var(--line-2);background:#fff;color:var(--ink);width:100%;border-radius:0}
+  input:focus,select:focus{outline:none;border-color:var(--red);box-shadow:inset 0 0 0 1px var(--red)}
+  .info-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px}
+  .ro{background:#f6f6f6;border:1.5px solid var(--line-2);padding:8px 11px}
+  .ro .k{font-size:10.5px;color:var(--sub);font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+  .ro .v{font-size:18px;font-weight:900;margin-top:3px;font-family:var(--num);font-variant-numeric:tabular-nums}
+  /* ==== table ==== */
+  .tablewrap{overflow-x:auto;border:1.5px solid var(--black)}
+  table{border-collapse:collapse;width:100%;min-width:880px;font-size:14px}
+  thead th{background:var(--black);color:#fff;font-weight:700;font-size:12px;text-align:left;padding:10px 10px;white-space:nowrap;letter-spacing:.06em;text-transform:uppercase}
+  tbody td{padding:6px 8px;border-bottom:1px solid var(--line-3);vertical-align:middle}
+  tbody tr:nth-child(even){background:#f6f6f6}
+  tbody tr:hover{background:var(--red-t)}
+  td .seq{color:var(--ink);font-variant-numeric:tabular-nums;font-weight:900;font-family:var(--num);font-size:14px}
+  td input,td select{padding:6px 8px;font-size:14px}
+  td .en{font-size:11.5px;color:var(--sub);margin-top:3px;line-height:1.3}
+  .col-name{min-width:260px;max-width:380px;white-space:normal}
+  .name-ta{width:100%;font-family:inherit;font-size:14px;font-weight:600;line-height:1.45;padding:6px 8px;border:1.5px solid var(--line-2);background:#fff;resize:none;overflow:hidden;white-space:pre-wrap;word-break:break-word;border-radius:0;color:var(--ink)}
+  .name-ta[readonly]{border-color:transparent;background:transparent;padding:2px 0;cursor:default}
+  .name-ta[readonly]:focus{outline:none;box-shadow:none}
+  .name-edit-on .name-ta{border-color:var(--red)}
+  .spec{font-family:var(--mono);font-size:12px;color:var(--black);font-weight:700}
+  .grade-sel{font-weight:900;color:var(--red);min-width:100px;font-size:14px}
+  .grade-sel[data-g="未鑑定"]{color:var(--sub);font-weight:600}
+  .num-in{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--num);font-weight:800}
+  tfoot td{background:var(--black);color:#fff;font-weight:900;font-family:var(--num);font-variant-numeric:tabular-nums;font-size:16px;padding:11px 10px;border-top:2px solid var(--red)}
+  tfoot .tlabel{text-transform:uppercase;letter-spacing:.06em;font-size:12px;font-family:inherit;font-weight:800}
+  tfoot .money-red{color:#ff8a8f}
+  .del{color:var(--red);border:1.5px solid transparent;background:none;cursor:pointer;font-size:15px;padding:2px 7px;line-height:1;font-weight:800}
+  .del:hover{border-color:var(--red);background:var(--red);color:#fff}
+  .badge{display:inline-block;background:var(--black);color:#fff;font-size:11px;font-weight:800;padding:3px 9px;font-family:var(--mono);letter-spacing:.03em}
+  .st{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:800;padding:3px 11px;letter-spacing:.04em}
+  .st.g{background:#fff;border:2px solid var(--red);color:var(--red)}
+  .st.d{background:var(--black);color:#fff;border:2px solid var(--black)}
+  /* ==== submission cards（横長の帯・縦積み） ==== */
+  .sub-list{display:flex;flex-direction:column;gap:12px}
+  .sub-card{background:var(--paper);border:1.5px solid var(--black);border-left:6px solid var(--red);padding:14px 18px;
+    display:grid;grid-template-columns:200px 1fr auto;align-items:center;gap:22px}
+  .sc-id{display:flex;flex-direction:column;gap:7px;align-items:flex-start}
+  .sub-no{font-size:20px;font-weight:900;letter-spacing:.03em;font-family:var(--num);font-variant-numeric:tabular-nums;line-height:1.1}
+  .sub-no small{display:block;font-size:10px;color:var(--sub);font-weight:800;margin-bottom:2px;letter-spacing:.1em;text-transform:uppercase;font-family:inherit}
+  .sc-body{display:flex;flex-direction:column;gap:9px;min-width:0}
+  .sub-meta{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:13.5px;color:var(--sub)}
+  .sub-meta b{color:var(--ink);font-weight:800}
+  .sub-money{display:flex;flex-wrap:wrap;gap:0}
+  .sm-item{padding:0 20px 0 0;margin-right:20px;border-right:1.5px solid var(--line-3)}
+  .sm-item:last-child{border-right:none;margin-right:0;padding-right:0}
+  .sm-k{font-size:10px;color:var(--sub);font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+  .sm-v{font-size:19px;font-weight:900;font-family:var(--num);font-variant-numeric:tabular-nums;margin-top:1px}
+  .grade-chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{font-size:12px;font-weight:800;padding:2px 9px;background:#fff;color:var(--black);border:1px solid var(--line-2);font-family:var(--num);font-variant-numeric:tabular-nums}
+  .chip b{color:var(--red);margin-left:5px}
+  .sub-actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end;flex:none}
+  .st{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800;padding:4px 12px;letter-spacing:.04em}
+  /* ==== empty / toast / foot ==== */
+  .empty{text-align:center;padding:44px 20px;color:var(--sub);border:1.5px dashed var(--line-2);background:#fafafa}
+  .empty .e-big{font-size:15px;font-weight:800;color:var(--ink)}
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--black);color:#fff;padding:12px 18px;font-size:13px;font-weight:700;border-left:4px solid var(--red);opacity:0;pointer-events:none;transition:.22s;z-index:60;max-width:90vw;letter-spacing:.02em}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .foot{text-align:center;color:var(--sub);font-size:11px;padding:12px;letter-spacing:.02em}
+  @media(max-width:640px){
+    body{font-size:15px}
+    header h1{font-size:15px}
+    header .sub{display:none}
+    .head-in{gap:10px;padding:11px 13px}
+    .head-actions{gap:6px}
+    .head-actions .btn span.t{display:none}
+    .head-actions .btn{padding:9px 11px}
+    .sync-badge{font-size:10px;padding:4px 7px}
+    main{padding:14px 11px 70px}
+    .panel-b{padding:13px}
+
+    /* 上部バナー：横スクロールをやめて3列で収める */
+    .banner-in{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;padding:0 12px;overflow:visible}
+    .b-item{padding:8px 6px;margin-right:0;border-right:1px solid #2b2b2b;min-width:0}
+    .b-item:nth-child(3n){border-right:none}
+    .b-k{font-size:9px;letter-spacing:.04em}
+    .b-v{font-size:16px}
+
+    /* 提出情報：1項目ずつ縦に */
+    .info-grid{grid-template-columns:1fr;gap:10px}
+
+    /* カード一覧：表 → 縦積みカード */
+    .tablewrap{border:none;overflow:visible}
+    table{min-width:0;width:100%;display:block}
+    thead{display:none}
+    tbody{display:block}
+    tbody tr{display:block;border:1.5px solid var(--black);border-left:6px solid var(--red);margin-bottom:12px;padding:10px 12px;background:#fff}
+    tbody tr:nth-child(even){background:#fff}
+    tbody tr:hover{background:#fff}
+    tbody td{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line-3)}
+    tbody td::before{content:attr(data-label);flex:none;width:82px;font-size:11px;font-weight:800;color:var(--sub);letter-spacing:.03em;text-transform:uppercase}
+    tbody td.col-name{display:block;border-bottom:2px solid var(--line-3);padding-bottom:9px}
+    tbody td.col-name::before{display:block;width:auto;margin-bottom:5px}
+    tbody td.c-seq{background:var(--black);color:#fff;margin:-10px -12px 6px;padding:7px 12px;border-bottom:none}
+    tbody td.c-seq::before{color:#fff}
+    tbody td.c-seq .seq{color:#fff;font-size:16px}
+    .name-ta{font-size:16px;padding:9px 10px}
+    .name-ta[readonly]{padding:2px 0;font-size:16px}
+    tbody td .en{font-size:12px}
+    /* 入力欄を大きくタップしやすく */
+    td input,td select{padding:11px 10px;font-size:16px;width:100%}
+    .num-in{text-align:left}
+    td input.num-in{min-width:0 !important}
+    .grade-sel{min-width:0;width:100%;font-size:16px}
+    tbody td.c-del{border-bottom:none;justify-content:flex-end;padding-top:9px}
+    tbody td.c-del::before{display:none}
+    .del{width:100%;border:1.5px solid var(--red);padding:10px;font-size:14px}
+    /* 合計フッター：カード化 */
+    tfoot{display:block}
+    tfoot tr{display:block;background:var(--black);padding:12px;border-left:6px solid var(--red)}
+    tfoot td{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border:none;color:#fff}
+    tfoot td.tlabel{font-size:13px;border-bottom:1px solid #444;padding-bottom:8px;margin-bottom:2px}
+    tfoot td::before{content:attr(data-label);font-size:11px;font-weight:800;color:#bbb;letter-spacing:.03em}
+    tfoot td.c-del-foot{display:none}
+
+    /* 提出一覧の帯：縦積み */
+    .sub-card{grid-template-columns:1fr;gap:12px}
+    .sub-actions{justify-content:flex-start}
+    .sub-actions .btn{flex:1}
+
+    /* 同期モーダル */
+    .modal-bg{padding:20px 10px}
+    .modal-actions .btn{flex:1}
+  }
+</style>
+</head>
+<body>
+<div id="loginScreen">
+  <div class="login-box">
+    <div class="login-logo">PSA</div>
+    <div class="login-title">PSA提出カード管理</div>
+    <div class="login-sub">ログインIDを入力してください</div>
+    <input id="loginId" class="login-input" placeholder="ログインID" autocomplete="username" autocapitalize="none" spellcheck="false">
+    <button class="btn gold login-btn" id="loginBtn">ログイン</button>
+    <div id="loginMsg" class="login-msg"></div>
+    <details class="login-adv" id="loginAdv">
+      <summary>同期の接続先を設定</summary>
+      <div class="field" style="margin-top:10px"><label>ウェブアプリURL（GASの /exec）</label>
+        <input id="loginUrl" placeholder="https://script.google.com/macros/s/.../exec"></div>
+      <div class="field" style="margin-top:8px"><label>合言葉（トークン）</label>
+        <input id="loginToken" placeholder="torelis0706"></div>
+      <div class="login-note">初回の端末では接続先の設定が必要です。PCで使っているものと同じURL・合言葉を入力してください。</div>
+    </details>
+  </div>
+</div>
+<div class="topbar">
+<header>
+  <div class="head-in">
+    <div class="logo">PSA</div>
+    <div>
+      <h1>PSA提出カード管理</h1>
+      <div class="sub">提出用紙PDFの読み込み・翻訳・鑑定進捗の管理</div>
+    </div>
+    <div class="head-actions">
+      <span class="user-badge" id="userBadge" style="display:none">ID <b id="userId"></b></span>
+      <span class="sync-badge" id="syncStatus">同期：オフ</span>
+      <button class="btn nav" id="btnSync"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12a8 8 0 0 1 13-6m3 2V4m0 4h-4M20 12a8 8 0 0 1-13 6m-3-2v4m0-4h4"/></svg><span class="t">同期設定</span></button>
+      <button class="btn nav" id="btnCsvIn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/></svg><span class="t">CSV読込</span></button>
+      <button class="btn nav" id="btnCsvOut"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9m0 0l-4 4m4-4l4 4M4 3h16"/></svg><span class="t">CSV書出</span></button>
+      <button class="btn nav" id="btnLogout" style="display:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 17l5-5-5-5M21 12H9M12 19H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h7"/></svg><span class="t">ログアウト</span></button>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs">
+  <div class="tabs-in">
+    <button class="tab active" data-tab="editor">読込・編集</button>
+    <button class="tab" data-tab="list">提出一覧 <span class="cnt" id="cntAll">0</span></button>
+    <button class="tab" data-tab="grading">鑑定中 <span class="cnt" id="cntG">0</span></button>
+    <button class="tab" data-tab="done">鑑定完了 <span class="cnt" id="cntD">0</span></button>
+    <button class="tab admin-only" data-tab="admin" id="tabAdmin" style="display:none">ID管理</button>
+    <button class="tab admin-only" data-tab="viewer" id="tabViewer" style="display:none">全ユーザー閲覧</button>
+  </div>
+</nav>
+
+<div class="banner">
+  <div class="banner-in">
+    <div class="b-item"><span class="b-k">総仕入</span><span class="b-v" id="bCost">¥0</span></div>
+    <div class="b-item"><span class="b-k">予想売却</span><span class="b-v" id="bExp">¥0</span></div>
+    <div class="b-item"><span class="b-k">売却</span><span class="b-v" id="bAct">¥0</span></div>
+  </div>
+</div>
+</div>
+
+<main>
+  <!-- ========== 編集ビュー ========== -->
+  <div class="view active" id="view-editor">
+    <section class="panel">
+      <div class="panel-h"><span class="num">1</span><h2>提出用紙の読み込み</h2>
+        <span class="hint">PSAの「Your submission is complete」PDFに対応</span></div>
+      <div class="panel-b">
+        <div class="drop" id="drop">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M12 11v6m0 0l-2.5-2.5M12 17l2.5-2.5"/></svg>
+          <div class="big">PDFをドロップ、またはクリックして選択</div>
+          <div class="small">1提出＝1件として保存し、枚数に応じて1枚ずつ展開・日本語変換します</div>
+        </div>
+        <input type="file" id="pdfInput" accept="application/pdf" hidden>
+        <input type="file" id="csvInput" accept=".csv,text/csv" hidden>
+        <div id="loadMsg" style="margin-top:10px;font-size:12.5px;color:var(--sub)"></div>
+      </div>
+    </section>
+
+    <section class="panel" id="infoPanel" style="display:none">
+      <div class="panel-h"><span class="num">2</span><h2>提出情報</h2><span class="hint">提出者・ステータスはこの提出全体に適用</span></div>
+      <div class="panel-b">
+        <div class="info-grid">
+          <div class="ro"><div class="k">提出番号</div><div class="v" id="iNo">—</div></div>
+          <div class="field"><label>提出日（PDFのSUBMISSION DATE）</label><input type="date" id="iDate"></div>
+          <div class="field"><label>サービスレベル</label><input type="text" id="iSvc"></div>
+          <div class="field"><label>提出者（提出全体）</label><input list="staffList" id="iSubmitter" placeholder="提出者を選択・入力"></div>
+          <div class="field"><label>ステータス</label>
+            <select id="iStatus"><option>鑑定中</option><option>鑑定完了</option></select></div>
+          <div class="ro"><div class="k">枚数</div><div class="v" id="iCount">0 枚</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="cardsPanel" style="display:none">
+      <div class="panel-h"><span class="num">3</span><h2>カード一覧</h2>
+        <span class="hint"><span id="countBadge" class="badge">0 枚</span></span></div>
+      <div class="panel-b">
+        <div id="tableArea"></div>
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="btn sm" id="btnNameEdit">✎ カード名を編集</button>
+          <button class="btn sm ghost" id="btnAddRow">＋ 行を追加</button>
+          <span style="display:inline-flex;align-items:center;gap:6px">
+            <span style="font-size:12px;color:var(--sub)">グレード一括：</span>
+            <select id="bulkGrade" style="width:auto"><option value="">—</option></select>
+          </span>
+          <button class="btn sm ghost" id="btnCsvOut2">この提出をCSV書出</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ========== 提出一覧 ========== -->
+  <div class="view" id="view-list">
+    <div id="listArea"></div>
+  </div>
+  <!-- ========== 鑑定中 ========== -->
+  <div class="view" id="view-grading">
+    <div id="gradingArea"></div>
+  </div>
+  <!-- ========== 鑑定完了 ========== -->
+  <div class="view" id="view-done">
+    <div id="doneArea"></div>
+  </div>
+
+  <!-- ========== ID管理（管理者のみ） ========== -->
+  <div class="view" id="view-admin">
+    <section class="panel">
+      <div class="panel-h"><span class="num">＋</span><h2>ログインID発行</h2><span class="hint">管理者のみ</span></div>
+      <div class="panel-b">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+          <div class="field" style="flex:1;min-width:160px"><label>ログインID（半角英数・_・-）</label>
+            <input id="newUserId" placeholder="例：sakai" autocapitalize="none" spellcheck="false"></div>
+          <div class="field" style="flex:1;min-width:160px"><label>表示名</label>
+            <input id="newUserName" placeholder="例：サカイ ケンタ"></div>
+          <button class="btn gold" id="btnAddUser">発行する</button>
+        </div>
+        <div id="adminMsg" class="sync-msg"></div>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-h"><span class="num">≡</span><h2>ログインID一覧</h2>
+        <span class="hint"><button class="btn sm ghost" id="btnReloadUsers">再読み込み</button></span></div>
+      <div class="panel-b"><div id="usersArea"></div></div>
+    </section>
+  </div>
+
+  <!-- ========== 全ユーザー閲覧（管理者のみ・表示のみ） ========== -->
+  <div class="view" id="view-viewer">
+    <section class="panel">
+      <div class="panel-h"><span class="num">👁</span><h2>全ユーザー閲覧</h2><span class="hint">表示のみ・編集不可</span></div>
+      <div class="panel-b">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+          <div class="field" style="flex:1;min-width:180px"><label>ユーザーを選択</label>
+            <select id="viewerUser"><option value="">— 選択 —</option></select></div>
+          <button class="btn gold" id="btnViewerLoad">表示</button>
+        </div>
+        <div id="viewerMsg" class="sync-msg"></div>
+      </div>
+    </section>
+    <div id="viewerBanner" class="viewer-banner" style="display:none"></div>
+    <div id="viewerArea"></div>
+  </div>
+
+  <div class="foot">データはこのブラウザ内（localStorage）に自動保存されます。バックアップはCSV書出をご利用ください。</div>
+</main>
+
+<datalist id="staffList"></datalist>
+<div class="modal-bg" id="syncModal">
+  <div class="modal">
+    <div class="modal-h"><b>Googleスプレッドシート同期</b><button class="modal-x" id="syncClose">✕</button></div>
+    <div class="modal-b">
+      <div class="field"><label>ウェブアプリURL（GASの /exec）</label>
+        <input id="syncUrl" placeholder="https://script.google.com/macros/s/.../exec"></div>
+      <div class="field" style="margin-top:10px"><label>合言葉（トークン）</label>
+        <input id="syncToken" placeholder="torelis0706"></div>
+      <label class="chk"><input type="checkbox" id="syncEnabled"> このブラウザで同期を有効にする</label>
+      <div class="modal-actions">
+        <button class="btn sm gold" id="syncTest">接続テスト</button>
+        <button class="btn sm ghost" id="syncPullBtn">今すぐ読み込み</button>
+        <button class="btn sm ghost" id="syncPushBtn">今すぐ保存</button>
+      </div>
+      <div id="syncMsg" class="sync-msg"></div>
+      <p class="sync-note">変更するたびに数秒後、自動でスプレッドシートへ保存します。起動時にも読み込みます。<br>同じURL・合言葉をPC・スマホの両方に設定すると、データを共有できます。合言葉を知っている人は読み書きできるため、URLの共有にはご注意ください。</p>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+/* ============================================================
+   PSA提出カード管理 v2 — 単一HTML・クライアント側のみ
+   ============================================================ */
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+const STORE_KEY = "psa_submission_manager_v2";
+const OLD_KEY   = "psa_submission_manager_v1";
+const LOGIN_KEY = "psa_login_user";
+const STAFF  = ["オカダ　ヒロト","サカイ ケンタ","テラサカ ダイキ","マナベ ナオヤ"];
+const GRADES = ["PSA10","PSA9","PSA8","PSA7","PSA6","PSA5","PSA4","PSA3","PSA2","PSA1","オーソ/その他","未鑑定"];
+const DEFAULT_GRADE = "PSA10";
+const STATUSES = ["鑑定中","鑑定完了"];
+
+let state = { submissions:[], editingId:null, updatedAt:0 };
+let activeTab = "editor";
+let currentUser = null;   // ログイン中のID
+let isAdmin = false;      // 管理者か（ステップ3で使用）
+
+/* ユーザーごとにローカル保存を分ける */
+function storeKey(){ return STORE_KEY + (currentUser ? ("::"+currentUser) : ""); }
+
+/* ---------- 保存/読込 ---------- */
+function save(){
+  state.updatedAt = Date.now();
+  try{ localStorage.setItem(storeKey(), JSON.stringify(state)); pulse(); }
+  catch(e){ toast("保存に失敗しました（容量超過の可能性）"); }
+  if(syncCfg.enabled && currentUser) schedulePush();
+}
+function loadUserLocal(){
+  state = { submissions:[], editingId:null, updatedAt:0 };
+  try{
+    const raw = localStorage.getItem(storeKey());
+    if(raw){ const s=JSON.parse(raw); state=Object.assign({submissions:[],editingId:null,updatedAt:0}, s); }
+  }catch(e){ console.error(e); }
+}
+function migrateV1(){
+  try{
+    const raw = localStorage.getItem(OLD_KEY); if(!raw) return;
+    const old = JSON.parse(raw); if(!old.cards || !old.cards.length) return;
+    const m = old.meta||{};
+    const sub = {
+      id: newId("s"), submissionNo: m.submissionNo||"", date: toISO(m.date)||"",
+      svcLevel: (m.svcLevel||"REGULAR"), submitter: (old.cards[0]&&old.cards[0].submitter)||"",
+      status: "鑑定中", createdAt: Date.now(),
+      cards: old.cards.map(c=>({ id:newId("c"), ln:c.ln||"", spec:c.spec||"",
+        nameEn:c.nameEn||"", nameJa:c.nameJa||"", grade:(c.grade&&c.grade!=="未返却")?c.grade:DEFAULT_GRADE,
+        cost:c.cost===undefined?"":c.cost, sellExp:"", sellAct:"" }))
+    };
+    state.submissions.push(sub); save();
+    toast("以前のデータを1件の提出として引き継ぎました");
+  }catch(e){}
+}
+let pulseT;
+function pulse(){ const p=document.getElementById("savePill"); if(!p)return;
+  p.style.color="#dfe6f5"; clearTimeout(pulseT); pulseT=setTimeout(()=>p.style.color="#b9c2da",600); }
+function newId(pre){ return pre+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
+/* ============================================================
+   Googleスプレッドシート同期（GAS中継・ステップ1）
+   ============================================================ */
+const SYNC_KEY = "psa_sync_config_v1";
+let syncCfg = { url:"", token:"", enabled:false };
+let pushTimer=null, syncBusy=false;
+
+function loadSyncCfg(){
+  try{ const raw=localStorage.getItem(SYNC_KEY); if(raw) syncCfg=Object.assign(syncCfg,JSON.parse(raw)); }catch(e){}
+}
+function saveSyncCfg(){ try{ localStorage.setItem(SYNC_KEY, JSON.stringify(syncCfg)); }catch(e){} }
+function setSyncStatus(txt, kind){
+  const el=document.getElementById("syncStatus"); if(!el) return;
+  el.textContent="同期："+txt; el.className="sync-badge"+(kind?(" "+kind):"");
+}
+function syncPayload(){ return { submissions: state.submissions, updatedAt: state.updatedAt||0 }; }
+async function pullRemote(){
+  if(!syncCfg.url) throw new Error("URL未設定");
+  if(!currentUser) throw new Error("未ログイン");
+  const u = syncCfg.url + (syncCfg.url.indexOf("?")>=0?"&":"?")
+          + "token=" + encodeURIComponent(syncCfg.token)
+          + "&user=" + encodeURIComponent(currentUser);
+  const r = await fetch(u, { method:"GET" });
+  const j = await r.json();
+  if(!j.ok) throw new Error(j.error||"読込失敗");
+  return j.state;
+}
+async function pushRemote(){
+  if(!syncCfg.url) throw new Error("URL未設定");
+  if(!currentUser) throw new Error("未ログイン");
+  const r = await fetch(syncCfg.url, { method:"POST",
+    body: JSON.stringify({ token:syncCfg.token, user:currentUser, state: syncPayload() }) });
+  const j = await r.json();
+  if(!j.ok) throw new Error(j.error||"保存失敗");
+  return j;
+}
+function schedulePush(){
+  setSyncStatus("編集中…","busy");
+  clearTimeout(pushTimer);
+  pushTimer=setTimeout(doPush, 2000);
+}
+async function doPush(){
+  if(!syncCfg.enabled) return;
+  if(syncBusy){ schedulePush(); return; }
+  syncBusy=true; setSyncStatus("保存中…","busy");
+  try{ await pushRemote(); setSyncStatus("保存済み","ok"); }
+  catch(e){ setSyncStatus("保存エラー","err"); console.error(e); }
+  finally{ syncBusy=false; }
+}
+function adoptRemote(remote){
+  if(!remote || !Array.isArray(remote.submissions)) return false;
+  state.submissions = remote.submissions;
+  state.updatedAt = remote.updatedAt||Date.now();
+  if(state.editingId && !state.submissions.find(s=>s.id===state.editingId)) state.editingId=null;
+  try{ localStorage.setItem(storeKey(), JSON.stringify(state)); }catch(e){}
+  return true;
+}
+function renderAllViews(){ updateCounts(); refreshBanner(); renderEditor(); renderLists(); }
+async function syncBoot(){
+  if(!syncCfg.enabled || !syncCfg.url){ setSyncStatus("オフ",""); return; }
+  setSyncStatus("読込中…","busy");
+  try{
+    const remote = await pullRemote();
+    if(remote && Array.isArray(remote.submissions)){
+      const rt=remote.updatedAt||0, lt=state.updatedAt||0;
+      if(rt>lt){ adoptRemote(remote); renderAllViews(); }
+      else if(lt>rt){ syncBusy=true; try{ await pushRemote(); } finally{ syncBusy=false; } }
+      setSyncStatus("同期済み","ok");
+    }else{
+      syncBusy=true; try{ await pushRemote(); } finally{ syncBusy=false; }
+      setSyncStatus("同期済み","ok");
+    }
+  }catch(e){ setSyncStatus("接続エラー","err"); console.error(e); }
+}
+
+/* ============================================================
+   ログイン（ステップ2）
+   ============================================================ */
+function loginMsg(txt,kind){ const el=document.getElementById("loginMsg"); if(!el)return;
+  el.textContent=txt; el.className="login-msg"+(kind?(" "+kind):""); }
+function showLogin(){
+  document.getElementById("loginScreen").classList.add("show");
+  document.body.classList.add("pre-login");
+  const uEl=document.getElementById("loginUrl"), tEl=document.getElementById("loginToken");
+  if(uEl) uEl.value=syncCfg.url||"";
+  if(tEl) tEl.value=syncCfg.token||"";
+  const idEl=document.getElementById("loginId"); if(idEl){ idEl.value=""; setTimeout(()=>idEl.focus(),50); }
+  loginMsg("","");
+}
+function hideLogin(){
+  document.getElementById("loginScreen").classList.remove("show");
+  document.body.classList.remove("pre-login");
+}
+function updateUserBadge(){
+  const b=document.getElementById("userBadge"), lo=document.getElementById("btnLogout");
+  if(currentUser){ document.getElementById("userId").textContent=currentUser; b.style.display=""; lo.style.display=""; }
+  else{ b.style.display="none"; lo.style.display="none"; }
+}
+function readLoginSyncFields(){
+  const u=document.getElementById("loginUrl"), t=document.getElementById("loginToken");
+  if(u && u.value.trim()) syncCfg.url=u.value.trim();
+  if(t && t.value.trim()) syncCfg.token=t.value.trim();
+}
+/** ログインID検証（GASのaction=login）。許可なら true, isAdmin を返す */
+async function verifyLogin(id){
+  const u = syncCfg.url + (syncCfg.url.indexOf("?")>=0?"&":"?")
+          + "token=" + encodeURIComponent(syncCfg.token)
+          + "&action=login&user=" + encodeURIComponent(id);
+  const r = await fetch(u, { method:"GET" });
+  return await r.json();
+}
+async function doLogin(){
+  const id=(document.getElementById("loginId").value||"").trim();
+  if(!id){ loginMsg("ログインIDを入力してください","err"); return; }
+  readLoginSyncFields(); saveSyncCfg();
+  if(!syncCfg.url || !syncCfg.token){ loginMsg("接続先(URL・合言葉)が未設定です。「同期の接続先を設定」を開いて入力してください。","err"); return; }
+  loginMsg("確認中…","");
+  try{
+    const j=await verifyLogin(id);
+    if(!j.ok){
+      loginMsg(j.error==="not_allowed" ? "このIDはログインできません（許可されていません）"
+             : j.error==="invalid_token" ? "合言葉が違います"
+             : ("ログインできません："+(j.error||"")), "err");
+      return;
+    }
+    await enterApp(id, !!j.isAdmin);
+  }catch(e){ loginMsg("接続エラー："+(e.message||e)+"（URL・合言葉・公開設定をご確認ください）","err"); }
+}
+/** ログイン成立後：アプリに入る */
+async function enterApp(id, admin){
+  currentUser=id; isAdmin=!!admin;
+  syncCfg.enabled=true; saveSyncCfg();
+  localStorage.setItem(LOGIN_KEY, id);
+  loadUserLocal();
+  hideLogin(); updateUserBadge(); applyAdminTabs();
+  state.editingId = state.submissions.find(s=>s.id===state.editingId) ? state.editingId : null;
+  renderAllViews();
+  await syncBoot();
+}
+/** 端末に保存されたIDで自動ログイン */
+async function autoLogin(savedId){
+  if(!syncCfg.url || !syncCfg.token){ showLogin(); return; }
+  try{
+    const j=await verifyLogin(savedId);
+    if(j.ok){ await enterApp(savedId, !!j.isAdmin); return; }
+    // 許可が外れた等 → ログイン画面へ
+    localStorage.removeItem(LOGIN_KEY); showLogin();
+    loginMsg(j.error==="not_allowed"?"このIDはログインできなくなりました。":"", j.error==="not_allowed"?"err":"");
+  }catch(e){
+    // オフライン等：以前ログイン済みなので、ローカルデータで続行（同期は復帰後）
+    currentUser=savedId; isAdmin=false; loadUserLocal(); hideLogin(); updateUserBadge(); applyAdminTabs();
+    renderAllViews(); setSyncStatus("オフライン","err");
+  }
+}
+function logout(){
+  if(!confirm("ログアウトします。よろしいですか？\n（このブラウザのこのIDのデータはスプレッドシートに保存済みです）")) return;
+  localStorage.removeItem(LOGIN_KEY);
+  currentUser=null; isAdmin=false;
+  state={ submissions:[], editingId:null, updatedAt:0 };
+  setSyncStatus("オフ","");
+  updateUserBadge(); applyAdminTabs();
+  renderAllViews();
+  showLogin();
+}
+
+/* ============================================================
+   管理者機能（ステップ3）: ID管理・全ユーザー閲覧
+   ============================================================ */
+function applyAdminTabs(){
+  const show = isAdmin ? "" : "none";
+  document.getElementById("tabAdmin").style.display=show;
+  document.getElementById("tabViewer").style.display=show;
+  // 管理者でないのに管理タブを開いていたら編集へ戻す
+  if(!isAdmin && (activeTab==="admin"||activeTab==="viewer")) switchTab("editor");
+}
+let adminUsersCache=[];
+async function adminGet(action, extra){
+  let u = syncCfg.url + (syncCfg.url.indexOf("?")>=0?"&":"?")
+        + "token=" + encodeURIComponent(syncCfg.token)
+        + "&action=" + encodeURIComponent(action)
+        + "&admin=" + encodeURIComponent(currentUser);
+  if(extra) for(const k in extra) u += "&"+k+"="+encodeURIComponent(extra[k]);
+  const r=await fetch(u,{method:"GET"}); return await r.json();
+}
+async function adminPost(payload){
+  const body=Object.assign({ token:syncCfg.token, admin:currentUser }, payload);
+  const r=await fetch(syncCfg.url,{method:"POST", body: JSON.stringify(body)});
+  return await r.json();
+}
+function adminMsg(txt,kind){ const el=document.getElementById("adminMsg"); if(!el)return; el.textContent=txt; el.className="sync-msg"+(kind?(" "+kind):""); }
+function fmtDate_(iso){ if(!iso)return"—"; const d=new Date(iso); return isNaN(d)?String(iso).slice(0,10):`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
+
+async function renderUsers(){
+  const area=document.getElementById("usersArea");
+  if(!isAdmin){ area.innerHTML=""; return; }
+  area.innerHTML='<div style="color:var(--sub);font-size:13px">読み込み中…</div>';
+  try{
+    const j=await adminGet("listUsers");
+    if(!j.ok) throw new Error(j.error==="not_admin"?"管理者のみ利用できます":(j.error||"取得失敗"));
+    adminUsersCache=j.users||[];
+    fillViewerSelect();
+    let rows=adminUsersCache.map(u=>`<tr>
+      <td><span class="spec" style="font-size:13px">${esc(u.loginId)}</span>${u.isAdmin?' <span class="badge" style="margin-left:6px">管理者</span>':''}</td>
+      <td>${esc(u.displayName||"—")}</td>
+      <td style="color:var(--sub)">${esc(fmtDate_(u.createdAt))}</td>
+      <td style="text-align:right">${u.isAdmin?'<span style="color:var(--sub);font-size:12px">—</span>':`<button class="btn sm danger" data-del="${esc(u.loginId)}">削除</button>`}</td>
+    </tr>`).join("");
+    area.innerHTML=`<div class="tablewrap"><table style="min-width:520px">
+      <thead><tr><th>ログインID</th><th>表示名</th><th>発行日</th><th></th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
+    area.querySelectorAll("[data-del]").forEach(btn=>btn.addEventListener("click",()=>deleteUser(btn.getAttribute("data-del"))));
+  }catch(e){ area.innerHTML=`<div class="empty"><div class="e-big">読み込めませんでした</div><div style="margin-top:4px">${esc(e.message||e)}</div></div>`; }
+}
+async function addUser(){
+  const id=(document.getElementById("newUserId").value||"").trim();
+  const nm=(document.getElementById("newUserName").value||"").trim();
+  if(!id){ adminMsg("ログインIDを入力してください","err"); return; }
+  if(!/^[A-Za-z0-9_\-]+$/.test(id)){ adminMsg("IDは半角英数・ハイフン・アンダースコアのみ使えます","err"); return; }
+  adminMsg("発行中…","");
+  try{
+    const j=await adminPost({ action:"addUser", newUser:id, displayName:nm });
+    if(!j.ok){ adminMsg(j.error==="already_exists"?"そのIDは既に存在します":j.error==="bad_id"?"IDに使えない文字が含まれています":j.error==="not_admin"?"管理者のみ利用できます":("発行失敗："+(j.error||"")),"err"); return; }
+    document.getElementById("newUserId").value=""; document.getElementById("newUserName").value="";
+    adminMsg(`ID「${id}」を発行しました`,"ok");
+    adminUsersCache=j.users||adminUsersCache; renderUsers();
+  }catch(e){ adminMsg("接続エラー："+(e.message||e),"err"); }
+}
+async function deleteUser(id){
+  if(!confirm(`ログインID「${id}」を削除します。\nログインは無効になりますが、提出データはスプレッドシートに残ります。よろしいですか？`)) return;
+  try{
+    const j=await adminPost({ action:"deleteUser", target:id });
+    if(!j.ok){ adminMsg(j.error==="cannot_delete_admin"?"管理者IDは削除できません":("削除失敗："+(j.error||"")),"err"); return; }
+    adminMsg(`ID「${id}」を削除しました（データは保持）`,"ok");
+    adminUsersCache=j.users||adminUsersCache; renderUsers();
+  }catch(e){ adminMsg("接続エラー："+(e.message||e),"err"); }
+}
+
+/* ---- 全ユーザー閲覧（表示のみ） ---- */
+function fillViewerSelect(){
+  const sel=document.getElementById("viewerUser"); if(!sel) return;
+  const cur=sel.value;
+  sel.innerHTML='<option value="">— 選択 —</option>'+adminUsersCache.map(u=>`<option value="${esc(u.loginId)}">${esc(u.loginId)}${u.displayName?("（"+esc(u.displayName)+"）"):""}</option>`).join("");
+  if(cur) sel.value=cur;
+}
+async function initViewer(){
+  if(!isAdmin) return;
+  if(!adminUsersCache.length){ try{ const j=await adminGet("listUsers"); if(j.ok){ adminUsersCache=j.users||[]; } }catch(e){} }
+  fillViewerSelect();
+}
+function viewerMsg(txt,kind){ const el=document.getElementById("viewerMsg"); if(!el)return; el.textContent=txt; el.className="sync-msg"+(kind?(" "+kind):""); }
+async function viewerLoad(){
+  const target=document.getElementById("viewerUser").value;
+  const bannerEl=document.getElementById("viewerBanner"), area=document.getElementById("viewerArea");
+  if(!target){ viewerMsg("ユーザーを選択してください","err"); return; }
+  viewerMsg("読み込み中…",""); bannerEl.style.display="none"; area.innerHTML="";
+  try{
+    const j=await adminGet("getUserData",{target});
+    if(!j.ok) throw new Error(j.error==="not_admin"?"管理者のみ利用できます":(j.error||"取得失敗"));
+    viewerMsg("",""); 
+    const subs=(j.state&&Array.isArray(j.state.submissions))?j.state.submissions:[];
+    renderViewer(target, subs);
+  }catch(e){ viewerMsg("読み込み失敗："+(e.message||e),"err"); }
+}
+function renderViewer(user, subs){
+  const bannerEl=document.getElementById("viewerBanner"), area=document.getElementById("viewerArea");
+  const tot=subs.reduce((a,s)=>{ const m=moneySum(s.cards||[]); a.cost+=m.cost;a.exp+=m.exp;a.act+=m.act;a.n+=(s.cards||[]).length; return a; },{cost:0,exp:0,act:0,n:0});
+  bannerEl.style.display="";
+  bannerEl.innerHTML=`<div class="vb-user">${esc(user)} の提出物（表示のみ）</div>
+    <div class="vb-nums">
+      <span><b>${subs.length}</b> 提出 / <b>${tot.n}</b> 枚</span>
+      <span>仕入 <b>${yen(tot.cost)}</b></span>
+      <span>予想売却 <b>${yen(tot.exp)}</b></span>
+      <span>売却 <b>${yen(tot.act)}</b></span>
+    </div>`;
+  if(!subs.length){ area.innerHTML='<div class="empty"><div class="e-big">このユーザーの提出物はありません</div></div>'; return; }
+  const sorted=[...subs].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  area.innerHTML=sorted.map(s=>{
+    const m=moneySum(s.cards||[]);
+    const stClass=s.status==="鑑定完了"?"d":"g";
+    const cardRows=(s.cards||[]).map((c,i)=>`<tr>
+      <td class="num-in" style="text-align:right">${i+1}</td>
+      <td>${esc(c.nameJa||"")}<div class="en">${esc(c.nameEn||"")}</div></td>
+      <td><span class="spec">${esc(c.spec||"")}</span></td>
+      <td><b style="color:var(--red)">${esc(c.grade||"")}</b></td>
+      <td class="num-in">${c.cost===""||c.cost==null?"":yen(c.cost)}</td>
+      <td class="num-in">${c.sellExp===""||c.sellExp==null?"":yen(c.sellExp)}</td>
+      <td class="num-in">${c.sellAct===""||c.sellAct==null?"":yen(c.sellAct)}</td>
+    </tr>`).join("");
+    return `<section class="panel" style="margin-bottom:14px">
+      <div class="panel-h"><h2 style="font-family:var(--num)">提出 ${esc(s.submissionNo||"（番号なし）")}</h2>
+        <span class="st ${stClass}" style="margin-left:auto">${esc(s.status||"")}</span></div>
+      <div class="panel-b">
+        <div class="sub-meta" style="margin-bottom:10px">
+          <span>提出日 <b>${esc(s.date||"—")}</b></span>
+          <span>提出者 <b>${esc(s.submitter||"未設定")}</b></span>
+          <span>枚数 <b>${(s.cards||[]).length}</b></span>
+          <span>仕入 <b>${yen(m.cost)}</b></span>
+          <span>予想売却 <b>${yen(m.exp)}</b></span>
+          <span>売却 <b>${yen(m.act)}</b></span>
+        </div>
+        <details><summary style="cursor:pointer;font-weight:700;font-size:13px;color:var(--sub)">カード明細を表示</summary>
+          <div class="tablewrap" style="margin-top:10px"><table style="min-width:640px">
+            <thead><tr><th>#</th><th>カード名</th><th>SPEC#</th><th>グレード</th><th>仕入</th><th>予想売却</th><th>売却</th></tr></thead>
+            <tbody>${cardRows}</tbody></table></div>
+        </details>
+      </div>
+    </section>`;
+  }).join("");
+}
+
+/* ---------- トースト ---------- */
+let toastT;
+function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),2600); }
+
+/* ============================================================
+   翻訳（ルールベース。年・型番・番号は保持、編集可能）
+   ============================================================ */
+const PHRASES = [
+  ["TAG TEAM GX ALL STARS","タッグチームGXオールスターズ"],
+  ["ROCKET GANG STRIKES BACK","ロケット団の逆襲"],
+  ["SKY-SPLITTING CHARISMA","裂空のカリスマ"],
+  ["SKY- SPLITTING CHARISMA","裂空のカリスマ"],
+  ["HOLON RESEARCH TOWER","ホロンの研究塔"],
+  ["SUPER ELECTRIC BREAKER","超電ブレイカー"],
+  ["GLORY OF TEAM ROCKET","ロケット団の栄光"],
+  ["EMPERORS IN THE NEW WORLD","新たなる皇帝"],
+  ["CARRYING ON HIS WILL","意志を受け継ぐ者"],
+  ["THE TIME OF BATTLE","決闘の時"],
+  ["ROUND1 PROMOTION PACK","ROUND1プロモパック"],
+  ["PROMOTION PACK","プロモパック"],
+  ["PROMO CARD PACK","プロモカードパック"],
+  ["POKEMON CARD 151","ポケモンカード151"],
+  ["POKEMON CARD FESTA","ポケモンカードフェスタ"],
+  ["POKEMON CENTER","ポケモンセンター"],
+  ["BATTLE COLLECTION","バトルコレクション"],
+  ["START DECK 100","スタートデッキ100"],
+  ["HIGH-CLASS DECK","ハイクラスデッキ"],
+  ["COLLECTOR BOX","コレクターボックス"],
+  ["BLUE SKY STREAM","蒼空ストリーム"],
+  ["PARADIGM TRIGGER","パラダイムトリガー"],
+  ["LOST ABYSS","ロストアビス"],
+  ["MIRAGE FOREST","幻影の森"],
+  ["TERASTAL FEST","テラスタルフェス"],
+  ["MEGA DREAM","メガドリーム"],
+  ["INFERNO X","インフェルノX"],
+  ["SUN & MOON","サン&ムーン"],
+  ["SWORD & SHIELD","ソード&シールド"],
+  ["TAG BOLT","タッグボルト"],
+  ["EEVEE HEROES","イーブイヒーローズ"],
+  ["EEVEE'S SET","イーブイズセット"],
+  ["ANNIVERSARY EDITION","アニバーサリーエディション"],
+  ["20TH ANNIVERSARY","20thアニバーサリー"],
+  ["25TH ANNIVERSARY","25thアニバーサリー"],
+  ["SPECIAL ART RARE","SAR"],
+  ["MANGA ALTERNATE ART","コミックパラレル"],
+  ["ALTERNATE ART","パラレル"],
+  ["FULL ART","フルアート"],
+  ["1ST EDITION","1st edition"],
+  ["POKEMON JAPANESE","ポケモン"],
+  ["ONE PIECE JAPANESE","ワンピース"],
+  ["ONE PIECE","ワンピース"],
+  ["POKEMON","ポケモン"],
+  ["MEGA GENGAR","メガゲンガー"],
+  ["MEGA CHARIZARD X","メガリザードンX"],
+  ["MEGA CHARIZARD Y","メガリザードンY"],
+  ["MEGA CHARIZARD","メガリザードン"],
+  ["LILLIE'S CLEFAIRY","リーリエのピッピ"],
+  ["ROCKET'S CELEBI","ロケット団のセレビィ"],
+  ["ROCKET'S MEWTWO","ロケット団のミュウツー"],
+  ["TEAM ROCKET'S MEWTWO","ロケット団のミュウツー"],
+  ["DARK TYRANITAR","悪のバンギラス"],
+  ["UMBREON & DARKRAI","ブラッキー&ダークライ"],
+  ["LATIAS & LATIOS","ラティアス&ラティオス"],
+  ["GENGAR & MIMIKYU","ゲンガー&ミミッキュ"],
+  ["BIRTHDAY PIKACHU","バースデーピカチュウ"],
+  ["YOKOHAMA'S PIKACHU","ヨコハマのピカチュウ"],
+  ["MONKEY D. LUFFY","モンキー・D・ルフィ"],
+  ["RORONOA ZORO","ロロノア・ゾロ"],
+];
+const WORDS = {
+  "PIKACHU":"ピカチュウ","CHARIZARD":"リザードン","UMBREON":"ブラッキー","ESPEON":"エーフィ",
+  "GENGAR":"ゲンガー","EEVEE":"イーブイ","MEWTWO":"ミュウツー","RAYQUAZA":"レックウザ",
+  "GIRATINA":"ギラティナ","LUGIA":"ルギア","DITTO":"メタモン","MIMIKYU":"ミミッキュ",
+  "LATIAS":"ラティアス","LATIOS":"ラティオス","DARKRAI":"ダークライ","CLEFAIRY":"ピッピ",
+  "TYRANITAR":"バンギラス","CELEBI":"セレビィ","SIGHTSEER":"観光客","LISIA":"ルチア",
+  "LUFFY":"ルフィ","ZORO":"ゾロ","NAMI":"ナミ","SANJI":"サンジ","SABO":"サボ",
+  "SHANKS":"シャンクス","BORSALINO":"ボルサリーノ",
+  "HOLO":"ホロ","VMAX":"VMAX","EX":"ex","GX":"GX",
+  "JAPANESE":"","EDITION":"エディション","PROMO":"プロモ","EXPANSION":"拡張",
+};
+function translate(en){
+  if(!en) return "";
+  let s = " "+en.toUpperCase().replace(/\s+/g," ").trim()+" ";
+  s = s.replace(/([A-Z])-\s+([A-Z])/g,"$1-$2");
+  for(const [a,b] of PHRASES){ s = s.split(a).join(b); }
+  s = s.replace(/[A-Z][A-Z'&.]*[A-Z]|[A-Z]/g, (w)=>{
+    const key = w.replace(/[^A-Z']/g,"");
+    if(WORDS.hasOwnProperty(key)) return WORDS[key];
+    return w;
+  });
+  s = s.replace(/\s+([&,])\s+/g,"$1").replace(/\s{2,}/g," ").trim();
+  s = s.replace(/\s*\/\s*/g,"／");
+  return s;
+}
+
+/* ============================================================
+   PDF解析（検証済みロジック）
+   ============================================================ */
+async function pageLines(page){
+  const tc = await page.getTextContent();
+  const items = tc.items.filter(it=>it.str!=="").map(it=>({str:it.str,x:it.transform[4],y:it.transform[5],w:it.width||0}));
+  const rows=[]; const tol=3;
+  for(const it of items){
+    let row = rows.find(r=>Math.abs(r.y-it.y)<=tol);
+    if(!row){ row={y:it.y,items:[]}; rows.push(row); }
+    row.items.push(it);
+  }
+  rows.sort((a,b)=>b.y-a.y);
+  return rows.map(r=>{
+    const its = r.items.sort((a,b)=>a.x-b.x); let out="";
+    for(let k=0;k<its.length;k++){
+      if(k>0){ const p=its[k-1]; if(its[k].x-(p.x+p.w) > 0.8) out+=" "; }
+      out += its[k].str;
+    }
+    return out.replace(/\s+/g," ").trim();
+  });
+}
+const ANCHOR = /^(\d+)\s+(\d+)\s+([A-Z]{2,3})\s*(\d{6,8})\s+TCG CARDS\s*(.*)$/;
+const MONEY = /\$[\d,]+/;
+const BADLINE = /LN ?#|SUBMISSION|CUSTOMER|GRAND TOTAL|Your submission|psacard|SERVICE LEVEL|PAYMENT|ORDER DETAILS|DESCRIPTION|VALUE TOTAL/;
+
+async function parsePDF(arrayBuffer){
+  const pdf = await pdfjsLib.getDocument({data:arrayBuffer}).promise;
+  const records = {}; const meta = {}; let allText = "";
+  for(let p=1;p<=pdf.numPages;p++){
+    const page = await pdf.getPage(p);
+    const lines = await pageLines(page);
+    allText += "\n"+lines.join("\n");
+    for(let i=0;i<lines.length;i++){
+      const m = lines[i].match(ANCHOR); if(!m) continue;
+      const ln=+m[1], qty=+m[2], spec=m[3]+m[4];
+      let rest=m[5]||""; const mm=rest.match(MONEY);
+      const inline=rest.replace(MONEY,"").trim();
+      let desc;
+      if(inline.length>3){ desc=inline; }
+      else{
+        const prev=i>0?lines[i-1]:""; const next=i+1<lines.length?lines[i+1]:"";
+        desc = ((BADLINE.test(prev)?"":prev)+" "+(BADLINE.test(next)?"":next)).replace(/\s+/g," ").trim();
+      }
+      if(!records[ln]) records[ln]={ln,qty,spec,desc};
+    }
+  }
+  const g = (re)=>{ const mm=allText.match(re); return mm?mm[1].trim():""; };
+  meta.submissionNo = g(/SUBMISSION #\s*([0-9]{6,})/);
+  // 提出日はラベルと別列に来るため、「SUBMISSION DATE」以降で最初に現れる M/D/YY を採用
+  const dIdx = allText.indexOf("SUBMISSION DATE");
+  const dM = dIdx>=0 ? allText.slice(dIdx).match(/(\d{1,2}\/\d{1,2}\/\d{2,4})/) : null;
+  meta.date = dM ? dM[1] : "";
+  meta.svcLevel = g(/SERVICE LEVEL:\s*([A-Z]+)/) || "REGULAR";
+  const arr = Object.values(records).sort((a,b)=>a.ln-b.ln);
+  return {records:arr, meta};
+}
+function toISO(us){
+  if(!us) return "";
+  const m = String(us).match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if(!m) return "";
+  let [_,mm,dd,yy]=m; yy=yy.length===2?("20"+yy):yy;
+  return `${yy}-${String(mm).padStart(2,"0")}-${String(dd).padStart(2,"0")}`;
+}
+/* PDF → 提出オブジェクト（1枚ずつ展開） */
+function buildSubmission(records, meta){
+  const cards=[];
+  for(const r of records){
+    for(let k=0;k<r.qty;k++){
+      cards.push({ id:newId("c"), ln:r.ln, spec:r.spec, nameEn:r.desc, nameJa:translate(r.desc), grade:DEFAULT_GRADE, cost:"", sellExp:"", sellAct:"" });
+    }
+  }
+  return { id:newId("s"), submissionNo:meta.submissionNo||"", date:toISO(meta.date)||"",
+    svcLevel:meta.svcLevel||"REGULAR", submitter:"", status:"鑑定中", createdAt:Date.now(), cards };
+}
+
+/* ============================================================
+   ユーティリティ
+   ============================================================ */
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function getEditing(){ return state.submissions.find(s=>s.id===state.editingId)||null; }
+function gradeSummary(cards){
+  const g={}; cards.forEach(c=>{ g[c.grade]=(g[c.grade]||0)+1; });
+  return GRADES.filter(x=>g[x]).map(x=>({g:x,n:g[x]}));
+}
+/* 金額集計 */
+function num(v){ return v===""||v==null?0:(+v||0); }
+function moneySum(cards){
+  return cards.reduce((a,c)=>{ a.cost+=num(c.cost); a.exp+=num(c.sellExp); a.act+=num(c.sellAct); return a; },
+    {cost:0,exp:0,act:0});
+}
+function globalMoney(){
+  return state.submissions.reduce((a,s)=>{ const m=moneySum(s.cards);
+    a.cost+=m.cost; a.exp+=m.exp; a.act+=m.act; return a; }, {cost:0,exp:0,act:0});
+}
+function yen(v){ return "¥"+Math.round(v||0).toLocaleString("ja-JP"); }
+/* 上部バナー（全提出合計） */
+function refreshBanner(){
+  const g=globalMoney();
+  document.getElementById("bCost").textContent=yen(g.cost);
+  document.getElementById("bExp").textContent=yen(g.exp);
+  document.getElementById("bAct").textContent=yen(g.act);
+}
+/* 編集中テーブルの合計フッター */
+function refreshEditorTotals(){
+  const sub=getEditing(); if(!sub) return;
+  const m=moneySum(sub.cards);
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.textContent=yen(v); };
+  set("tCost",m.cost); set("tExp",m.exp); set("tAct",m.act);
+}
+/* 金額の整形（3桁区切り）と数字抽出 */
+function fmtInt(v){ if(v===""||v==null) return ""; return Math.round(+v||0).toLocaleString("ja-JP"); }
+function digits(s){ const d=String(s==null?"":s).replace(/[^\d]/g,""); return d===""?"":(+d); }
+/* カード名テキストエリアの高さ自動調整 */
+function autoGrow(el){ el.style.height="auto"; el.style.height=(el.scrollHeight)+"px"; }
+/* カード名の編集モード（全行のカード名編集の可否） */
+let nameEditMode=false;
+
+/* ============================================================
+   タブ
+   ============================================================ */
+function switchTab(name){
+  activeTab=name;
+  document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t.dataset.tab===name));
+  document.querySelectorAll(".view").forEach(v=>v.classList.toggle("active",v.id==="view-"+name));
+  if(name==="editor") renderEditor();
+  else if(name==="admin") renderUsers();
+  else if(name==="viewer") initViewer();
+  else renderLists();
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+
+/* ============================================================
+   編集ビュー
+   ============================================================ */
+function renderEditor(){
+  const sub=getEditing();
+  const info=document.getElementById("infoPanel");
+  const cardsP=document.getElementById("cardsPanel");
+  if(!sub){ info.style.display="none"; cardsP.style.display="none"; return; }
+  info.style.display=""; cardsP.style.display="";
+  nameEditMode=false; applyNameEditBtn();
+  document.getElementById("iNo").textContent = sub.submissionNo||"—";
+  document.getElementById("iDate").value = sub.date||"";
+  document.getElementById("iSvc").value = sub.svcLevel||"";
+  document.getElementById("iSubmitter").value = sub.submitter||"";
+  document.getElementById("iStatus").value = sub.status||"鑑定中";
+  document.getElementById("iCount").textContent = sub.cards.length+" 枚";
+  renderTable(sub);
+}
+function renderTable(sub){
+  const area=document.getElementById("tableArea");
+  document.getElementById("countBadge").textContent = sub.cards.length+" 枚";
+  if(!sub.cards.length){
+    area.innerHTML=`<div class="empty"><div class="e-big">カードがありません</div>
+      <div style="margin-top:4px">PDFを読み込むか「行を追加」で登録してください。</div></div>`;
+    return;
+  }
+  const gradeOpts = g=>GRADES.map(x=>`<option${x===g?" selected":""}>${x}</option>`).join("");
+  const NUMF=["cost","sellExp","sellAct"];
+  const ro = nameEditMode ? "" : "readonly";
+  let rows="";
+  sub.cards.forEach((c,i)=>{
+    rows+=`<tr data-id="${c.id}">
+      <td class="c-seq" data-label="No."><span class="seq">${i+1}</span></td>
+      <td class="col-name" data-label="カード名">
+        <textarea class="name-ta" data-f="nameJa" rows="1" ${ro} placeholder="カード名（日本語）">${esc(c.nameJa)}</textarea>
+        <div class="en">${esc(c.nameEn)}</div>
+      </td>
+      <td data-label="SPEC#"><span class="spec">${esc(c.spec)}</span></td>
+      <td data-label="グレード"><select data-f="grade" class="grade-sel" data-g="${esc(c.grade)}">${gradeOpts(c.grade)}</select></td>
+      <td data-label="仕入(円)"><input type="text" inputmode="numeric" class="num-in" data-f="cost" value="${fmtInt(c.cost)}" placeholder="0" style="min-width:112px"></td>
+      <td data-label="予想売却(円)"><input type="text" inputmode="numeric" class="num-in" data-f="sellExp" value="${fmtInt(c.sellExp)}" placeholder="0" style="min-width:112px"></td>
+      <td data-label="売却(円)"><input type="text" inputmode="numeric" class="num-in" data-f="sellAct" value="${fmtInt(c.sellAct)}" placeholder="0" style="min-width:112px"></td>
+      <td class="c-del"><button class="del" title="削除">✕ 削除</button></td>
+    </tr>`;
+  });
+  area.innerHTML=`<div class="tablewrap${nameEditMode?" name-edit-on":""}"><table>
+    <thead><tr><th>#</th><th>カード名（日本語）／原文</th><th>SPEC#</th><th>グレード</th><th>仕入(円)</th><th>予想売却(円)</th><th>売却(円)</th><th></th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr class="tfoot-row">
+      <td colspan="4" class="tlabel">合計（この提出）</td>
+      <td class="num-in" id="tCost" data-label="仕入 合計">¥0</td>
+      <td class="num-in money-red" id="tExp" data-label="予想売却 合計">¥0</td>
+      <td class="num-in money-red" id="tAct" data-label="売却 合計">¥0</td>
+      <td class="c-del-foot"></td>
+    </tr></tfoot></table></div>`;
+  area.querySelectorAll("tbody tr").forEach(tr=>{
+    const id=tr.dataset.id; const card=sub.cards.find(c=>c.id===id);
+    // カード名（折り返しtextarea）
+    const ta=tr.querySelector('textarea[data-f="nameJa"]');
+    autoGrow(ta);
+    ta.addEventListener("input",()=>{ card.nameJa=ta.value; autoGrow(ta); save(); });
+    // グレード
+    const gsel=tr.querySelector('select[data-f="grade"]');
+    gsel.addEventListener("change",()=>{ card.grade=gsel.value; gsel.dataset.g=gsel.value; save(); updateCounts(); });
+    // 金額欄（コンマ表示・数字のみ・Enterで下へ）
+    tr.querySelectorAll('input.num-in').forEach(inp=>{
+      inp.addEventListener("input",()=>{
+        const v=digits(inp.value);
+        card[inp.dataset.f]=v;
+        inp.value = v===""?"":v.toLocaleString("ja-JP");
+        const p=inp.value.length; try{ inp.setSelectionRange(p,p); }catch(e){}
+        save(); refreshEditorTotals(); refreshBanner();
+      });
+      inp.addEventListener("keydown",e=>{
+        if(e.key!=="Enter") return;
+        e.preventDefault();
+        const col=inp.dataset.f;
+        const list=[...area.querySelectorAll(`input[data-f="${col}"]`)];
+        const next=list[list.indexOf(inp)+1];
+        if(next){ next.focus(); next.select&&next.select(); } else inp.blur();
+      });
+    });
+    tr.querySelector(".del").addEventListener("click",()=>{
+      sub.cards=sub.cards.filter(c=>c.id!==id);
+      renderEditor(); save(); updateCounts();
+    });
+  });
+  refreshEditorTotals();
+}
+
+/* ============================================================
+   一覧・鑑定中・鑑定完了
+   ============================================================ */
+function renderLists(){
+  renderSubList("listArea", state.submissions, "保存された提出はまだありません。「読込・編集」からPDFを読み込んでください。");
+  renderSubList("gradingArea", state.submissions.filter(s=>s.status==="鑑定中"), "鑑定中の提出はありません。");
+  renderSubList("doneArea", state.submissions.filter(s=>s.status==="鑑定完了"), "鑑定完了の提出はありません。");
+}
+function renderSubList(areaId, subs, emptyMsg){
+  const area=document.getElementById(areaId);
+  if(!subs.length){ area.innerHTML=`<div class="empty"><div class="e-big">${emptyMsg}</div></div>`; return; }
+  const sorted=[...subs].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  let html='<div class="sub-list">';
+  sorted.forEach(s=>{
+    const stClass = s.status==="鑑定完了"?"d":"g";
+    const chips = gradeSummary(s.cards).map(x=>`<span class="chip">${x.g}<b>${x.n}</b></span>`).join("") || '<span class="chip" style="color:var(--sub)">グレード未入力</span>';
+    const m = moneySum(s.cards);
+    html+=`<div class="sub-card" data-id="${s.id}">
+      <div class="sc-id">
+        <div class="sub-no"><small>提出番号</small>${esc(s.submissionNo||"（番号なし）")}</div>
+        <span class="st ${stClass}">${esc(s.status)}</span>
+      </div>
+      <div class="sc-body">
+        <div class="sub-meta">
+          <span>提出日 <b>${esc(s.date||"—")}</b></span>
+          <span>提出者 <b>${esc(s.submitter||"未設定")}</b></span>
+          <span>枚数 <b>${s.cards.length}</b></span>
+          <span>サービス <b>${esc(s.svcLevel||"—")}</b></span>
+        </div>
+        <div class="sub-money">
+          <div class="sm-item"><div class="sm-k">仕入</div><div class="sm-v">${yen(m.cost)}</div></div>
+          <div class="sm-item"><div class="sm-k">予想売却</div><div class="sm-v">${yen(m.exp)}</div></div>
+          <div class="sm-item"><div class="sm-k">売却</div><div class="sm-v">${yen(m.act)}</div></div>
+        </div>
+        <div class="grade-chips">${chips}</div>
+      </div>
+      <div class="sub-actions">
+        <button class="btn sm gold" data-act="open">開いて編集</button>
+        <button class="btn sm ghost" data-act="csv">CSV</button>
+        <button class="btn sm danger" data-act="del">削除</button>
+      </div>
+    </div>`;
+  });
+  html+='</div>';
+  area.innerHTML=html;
+  area.querySelectorAll(".sub-card").forEach(el=>{
+    const id=el.dataset.id; const sub=state.submissions.find(s=>s.id===id);
+    el.querySelector('[data-act="open"]').addEventListener("click",()=>{ state.editingId=id; save(); switchTab("editor"); });
+    el.querySelector('[data-act="csv"]').addEventListener("click",()=>exportSubmissionCSV(sub));
+    el.querySelector('[data-act="del"]').addEventListener("click",()=>{
+      if(confirm(`提出 ${sub.submissionNo||""}（${sub.cards.length}枚）を削除します。よろしいですか？`)){
+        state.submissions=state.submissions.filter(s=>s.id!==id);
+        if(state.editingId===id) state.editingId=null;
+        save(); renderLists(); updateCounts(); toast("削除しました");
+      }
+    });
+  });
+}
+function updateCounts(){
+  document.getElementById("cntAll").textContent=state.submissions.length;
+  document.getElementById("cntG").textContent=state.submissions.filter(s=>s.status==="鑑定中").length;
+  document.getElementById("cntD").textContent=state.submissions.filter(s=>s.status==="鑑定完了").length;
+  refreshBanner();
+}
+
+/* ============================================================
+   CSV
+   ============================================================ */
+const CSV_COLS=[
+  ["submissionNo","提出番号"],["date","提出日"],["svcLevel","サービスレベル"],
+  ["submitter","提出者"],["status","ステータス"],["seq","連番"],
+  ["ln","LN"],["spec","SPEC"],["nameJa","カード名"],["nameEn","原文"],
+  ["grade","グレード"],["cost","仕入金額(円)"],["sellExp","予想売却値(円)"],["sellAct","売却値(円)"]
+];
+function csvCell(v){ v=String(v==null?"":v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
+function todayStr(){ const d=new Date(); return d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0"); }
+function exportSubmissionCSV(sub){
+  if(!sub||!sub.cards.length){ toast("書き出すカードがありません"); return; }
+  const head=CSV_COLS.map(c=>c[1]).join(",");
+  const lines=sub.cards.map((c,i)=>CSV_COLS.map(([k])=>{
+    if(k==="seq") return i+1;
+    if(["submissionNo","date","svcLevel","submitter","status"].includes(k)) return csvCell(sub[k]);
+    return csvCell(c[k]);
+  }).join(","));
+  const csv="\uFEFF"+[head,...lines].join("\r\n");
+  const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download=`psa_${sub.submissionNo||"submission"}_${todayStr()}.csv`; a.click();
+  URL.revokeObjectURL(a.href); toast("CSVを書き出しました");
+}
+function parseCSV(text){
+  text=text.replace(/^\uFEFF/,"");
+  const rows=[]; let row=[],cur="",q=false;
+  for(let i=0;i<text.length;i++){ const ch=text[i];
+    if(q){ if(ch=='"'){ if(text[i+1]=='"'){cur+='"';i++;} else q=false; } else cur+=ch; }
+    else{ if(ch=='"')q=true; else if(ch==",") {row.push(cur);cur="";}
+      else if(ch=="\n"){ row.push(cur); rows.push(row); row=[];cur=""; }
+      else if(ch=="\r"){} else cur+=ch; }
+  }
+  if(cur!==""||row.length){ row.push(cur); rows.push(row); }
+  return rows.filter(r=>r.some(c=>c.trim()!==""));
+}
+function importCSV(text){
+  const rows=parseCSV(text);
+  if(rows.length<2){ toast("CSVにデータがありません"); return; }
+  const head=rows[0].map(h=>h.trim());
+  const idx={}; CSV_COLS.forEach(([k,label])=>{ const i=head.indexOf(label); if(i>=0) idx[k]=i; });
+  const get=(row,k)=> idx[k]!=null? (row[idx[k]]||"").trim() : "";
+  // 提出番号でグループ化
+  const groups={};
+  for(let r=1;r<rows.length;r++){
+    const row=rows[r]; const no=get(row,"submissionNo")||"（番号なし）";
+    (groups[no]=groups[no]||[]).push(row);
+  }
+  let added=0;
+  Object.keys(groups).forEach(no=>{
+    const grp=groups[no]; const first=grp[0];
+    const numc=(row,k)=>get(row,k)===""?"":(+get(row,k)||0);
+    const cards=grp.map(row=>({ id:newId("c"), ln:get(row,"ln"), spec:get(row,"spec"),
+      nameJa:get(row,"nameJa"), nameEn:get(row,"nameEn"),
+      grade:get(row,"grade")||DEFAULT_GRADE, cost:numc(row,"cost"),
+      sellExp:numc(row,"sellExp"), sellAct:numc(row,"sellAct") }));
+    const sub={ id:newId("s"), submissionNo:(no==="（番号なし）"?"":no), date:get(first,"date"),
+      svcLevel:get(first,"svcLevel")||"REGULAR", submitter:get(first,"submitter"),
+      status:get(first,"status")||"鑑定中", createdAt:Date.now(), cards };
+    const exIdx=state.submissions.findIndex(s=>s.submissionNo && s.submissionNo===sub.submissionNo);
+    if(exIdx>=0 && sub.submissionNo){
+      if(confirm(`提出 ${sub.submissionNo} は既にあります。CSVの内容で置き換えますか？\n（キャンセルで別件として追加）`)){
+        sub.id=state.submissions[exIdx].id; state.submissions[exIdx]=sub;
+      }else state.submissions.push(sub);
+    }else state.submissions.push(sub);
+    added++;
+  });
+  save(); updateCounts(); renderLists();
+  toast(`${added} 件の提出を読み込みました`);
+  switchTab("list");
+}
+
+/* ============================================================
+   PDF読み込み
+   ============================================================ */
+async function handlePDF(file){
+  const msg=document.getElementById("loadMsg");
+  if(file.type && file.type!=="application/pdf" && !file.name.toLowerCase().endsWith(".pdf")){
+    msg.textContent="PDFファイルを選んでください。"; return;
+  }
+  msg.textContent="読み込み中…";
+  try{
+    const buf=await file.arrayBuffer();
+    const {records,meta}=await parsePDF(buf);
+    if(!records.length){ msg.innerHTML='<span style="color:var(--warn)">カード行が見つかりませんでした。PSAの提出完了PDFかご確認ください。</span>'; return; }
+    const sub=buildSubmission(records,meta);
+    // 同じ提出番号が既にある場合は確認
+    const exIdx = sub.submissionNo? state.submissions.findIndex(s=>s.submissionNo===sub.submissionNo) : -1;
+    if(exIdx>=0){
+      if(confirm(`提出 ${sub.submissionNo} は既に保存されています。\n「OK」で置き換え、「キャンセル」で別件として追加します。`)){
+        sub.id=state.submissions[exIdx].id; sub.status=state.submissions[exIdx].status; state.submissions[exIdx]=sub;
+      }else state.submissions.push(sub);
+    }else state.submissions.push(sub);
+    state.editingId=sub.id;
+    save(); updateCounts(); renderEditor();
+    msg.innerHTML=`<span style="color:var(--ok)">✓ ${records.length} 行 → ${sub.cards.length} 枚を保存しました（提出番号 ${sub.submissionNo||"—"}）。下で編集できます。</span>`;
+  }catch(err){ console.error(err);
+    msg.innerHTML='<span style="color:var(--warn)">読み込みに失敗しました：'+esc(err.message||err)+'</span>'; }
+}
+
+/* ============================================================
+   イベント配線
+   ============================================================ */
+// タブ
+document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>switchTab(t.dataset.tab)));
+// ドロップ
+const drop=document.getElementById("drop");
+const pdfInput=document.getElementById("pdfInput");
+const csvInput=document.getElementById("csvInput");
+drop.addEventListener("click",()=>pdfInput.click());
+["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("drag");}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("drag");}));
+drop.addEventListener("drop",e=>{ const f=e.dataTransfer.files[0]; if(f) handlePDF(f); });
+pdfInput.addEventListener("change",e=>{ const f=e.target.files[0]; if(f) handlePDF(f); pdfInput.value=""; });
+csvInput.addEventListener("change",e=>{ const f=e.target.files[0]; if(f){ const rd=new FileReader(); rd.onload=()=>importCSV(rd.result); rd.readAsText(f,"utf-8"); } csvInput.value=""; });
+
+// 提出情報の編集
+function bindInfo(id,key,after){
+  document.getElementById(id).addEventListener("input",e=>{
+    const sub=getEditing(); if(!sub) return;
+    sub[key]=e.target.value; save(); if(after) after(sub);
+  });
+}
+bindInfo("iDate","date");
+bindInfo("iSvc","svcLevel");
+bindInfo("iSubmitter","submitter");
+document.getElementById("iStatus").addEventListener("change",e=>{
+  const sub=getEditing(); if(!sub) return;
+  sub.status=e.target.value; save(); updateCounts();
+});
+
+// ヘッダーCSV
+document.getElementById("btnCsvIn").addEventListener("click",()=>csvInput.click());
+document.getElementById("btnCsvOut").addEventListener("click",()=>{
+  const sub=getEditing();
+  if(!sub){ toast("編集中の提出がありません（一覧から開いてください）"); return; }
+  exportSubmissionCSV(sub);
+});
+document.getElementById("btnCsvOut2").addEventListener("click",()=>{ const sub=getEditing(); if(sub) exportSubmissionCSV(sub); });
+
+// カード名の編集モード切替
+function applyNameEditBtn(){
+  const btn=document.getElementById("btnNameEdit");
+  if(nameEditMode){ btn.classList.add("gold"); btn.textContent="✓ 編集を終了"; }
+  else{ btn.classList.remove("gold"); btn.textContent="✎ カード名を編集"; }
+}
+document.getElementById("btnNameEdit").addEventListener("click",()=>{
+  const sub=getEditing(); if(!sub){ toast("先にPDFを読み込んでください"); return; }
+  nameEditMode=!nameEditMode;
+  applyNameEditBtn();
+  renderTable(sub);
+  if(nameEditMode) toast("カード名を編集できます");
+});
+
+// 行追加・グレード一括
+document.getElementById("btnAddRow").addEventListener("click",()=>{
+  const sub=getEditing(); if(!sub){ toast("先にPDFを読み込んでください"); return; }
+  sub.cards.push({ id:newId("c"), ln:"", spec:"", nameEn:"", nameJa:"", grade:DEFAULT_GRADE, cost:"", sellExp:"", sellAct:"" });
+  renderEditor(); save(); updateCounts();
+});
+(function initBulk(){
+  const sel=document.getElementById("bulkGrade");
+  GRADES.forEach(g=>{ const o=document.createElement("option"); o.value=g; o.textContent="全て "+g; sel.appendChild(o); });
+  sel.addEventListener("change",()=>{
+    const sub=getEditing(); const g=sel.value;
+    if(!sub||!g){ sel.value=""; return; }
+    if(confirm(`この提出の ${sub.cards.length} 枚すべてのグレードを「${g}」にします。よろしいですか？`)){
+      sub.cards.forEach(c=>c.grade=g); renderEditor(); save(); updateCounts(); toast("グレードを一括変更しました");
+    }
+    sel.value="";
+  });
+})();
+
+/* ===== 同期設定モーダルの配線 ===== */
+const syncModal=document.getElementById("syncModal");
+function openSyncModal(){
+  document.getElementById("syncUrl").value=syncCfg.url||"";
+  document.getElementById("syncToken").value=syncCfg.token||"";
+  document.getElementById("syncEnabled").checked=!!syncCfg.enabled;
+  document.getElementById("syncMsg").textContent=""; document.getElementById("syncMsg").className="sync-msg";
+  syncModal.classList.add("show");
+}
+function closeSyncModal(){ syncModal.classList.remove("show"); }
+function readSyncFields(){
+  syncCfg.url=document.getElementById("syncUrl").value.trim();
+  syncCfg.token=document.getElementById("syncToken").value.trim();
+  syncCfg.enabled=document.getElementById("syncEnabled").checked;
+  saveSyncCfg();
+}
+function syncMsg(txt,kind){ const el=document.getElementById("syncMsg"); el.textContent=txt; el.className="sync-msg"+(kind?(" "+kind):""); }
+document.getElementById("btnSync").addEventListener("click",openSyncModal);
+document.getElementById("syncClose").addEventListener("click",closeSyncModal);
+syncModal.addEventListener("click",e=>{ if(e.target===syncModal) closeSyncModal(); });
+["syncUrl","syncToken"].forEach(id=>document.getElementById(id).addEventListener("input",readSyncFields));
+document.getElementById("syncEnabled").addEventListener("change",()=>{
+  readSyncFields();
+  if(syncCfg.enabled){ syncMsg("同期を有効にしました。読み込みます…",""); syncBoot().then(()=>syncMsg("同期を有効にしました。","ok")); }
+  else{ setSyncStatus("オフ",""); syncMsg("同期を無効にしました（このブラウザ内のみ保存）",""); }
+});
+document.getElementById("syncTest").addEventListener("click",async()=>{
+  readSyncFields();
+  if(!syncCfg.url){ syncMsg("URLを入力してください","err"); return; }
+  syncMsg("接続中…","");
+  try{ const remote=await pullRemote();
+    const n=(remote&&Array.isArray(remote.submissions))?remote.submissions.length:0;
+    syncMsg(`接続成功。スプレッドシートの提出件数：${n} 件`,"ok");
+  }catch(e){ syncMsg("接続失敗："+(e.message||e)+"（URL・合言葉・公開設定をご確認ください）","err"); }
+});
+document.getElementById("syncPullBtn").addEventListener("click",async()=>{
+  readSyncFields();
+  if(!syncCfg.url){ syncMsg("URLを入力してください","err"); return; }
+  if(!confirm("スプレッドシートの内容をこのブラウザに読み込みます。現在の未保存の変更は上書きされる場合があります。よろしいですか？")) return;
+  syncMsg("読み込み中…","");
+  try{ const remote=await pullRemote();
+    if(remote&&Array.isArray(remote.submissions)){ adoptRemote(remote); renderAllViews(); setSyncStatus("同期済み","ok"); syncMsg("読み込みました。","ok"); }
+    else syncMsg("スプレッドシートにデータがありません。","");
+  }catch(e){ syncMsg("読み込み失敗："+(e.message||e),"err"); }
+});
+document.getElementById("syncPushBtn").addEventListener("click",async()=>{
+  readSyncFields();
+  if(!syncCfg.url){ syncMsg("URLを入力してください","err"); return; }
+  syncMsg("保存中…","");
+  try{ await pushRemote(); setSyncStatus("保存済み","ok"); syncMsg("スプレッドシートに保存しました。","ok"); }
+  catch(e){ syncMsg("保存失敗："+(e.message||e),"err"); }
+});
+
+/* ===== ログイン画面の配線 ===== */
+document.getElementById("loginBtn").addEventListener("click",doLogin);
+document.getElementById("loginId").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); doLogin(); } });
+document.getElementById("loginToken").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); doLogin(); } });
+document.getElementById("btnLogout").addEventListener("click",logout);
+
+/* ===== 管理者機能の配線 ===== */
+document.getElementById("btnAddUser").addEventListener("click",addUser);
+document.getElementById("btnReloadUsers").addEventListener("click",renderUsers);
+document.getElementById("newUserId").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); addUser(); } });
+document.getElementById("newUserName").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); addUser(); } });
+document.getElementById("btnViewerLoad").addEventListener("click",viewerLoad);
+document.getElementById("viewerUser").addEventListener("change",viewerLoad);
+
+/* 起動 */
+(function boot(){
+  // datalist（提出者候補）
+  const dl=document.getElementById("staffList");
+  STAFF.forEach(s=>{ const o=document.createElement("option"); o.value=s; dl.appendChild(o); });
+  loadSyncCfg();
+  const savedUser = localStorage.getItem(LOGIN_KEY);
+  if(savedUser){
+    // 接続先が未設定なら、接続先設定を開いた状態でログイン画面へ
+    if(!syncCfg.url || !syncCfg.token){ showLogin(); const a=document.getElementById("loginAdv"); if(a) a.open=true; loginMsg("接続先を設定してからログインしてください","err"); }
+    else{ setSyncStatus("読込中…","busy"); autoLogin(savedUser); }
+  }else{
+    showLogin();
+    if(!syncCfg.url || !syncCfg.token){ const a=document.getElementById("loginAdv"); if(a) a.open=true; }
+  }
+})();
+</script>
+</body>
+</html>
